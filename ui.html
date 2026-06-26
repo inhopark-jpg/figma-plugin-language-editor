@@ -1,0 +1,664 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  :root {
+    --bg: var(--figma-color-bg, #fff);
+    --bg-2: var(--figma-color-bg-secondary, #f5f5f5);
+    --bg-hover: var(--figma-color-bg-hover, #f0f0f0);
+    --bg-sel: var(--figma-color-bg-selected, #e5f0ff);
+    --border: var(--figma-color-border, #e6e6e6);
+    --text: var(--figma-color-text, #1a1a1a);
+    --text-2: var(--figma-color-text-secondary, #888);
+    --brand: var(--figma-color-bg-brand, #0d99ff);
+    --brand-text: var(--figma-color-text-onbrand, #fff);
+    --red: var(--figma-color-text-danger, #f24822);
+    --red-bg: var(--figma-color-bg-danger, #fff0ed);
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    font-family: Inter, -apple-system, system-ui, sans-serif;
+    font-size: 11px; color: var(--text); background: var(--bg);
+  }
+  body { display: flex; flex-direction: column; height: 100vh; }
+
+  header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 8px 12px; border-bottom: 1px solid var(--border); gap: 8px;
+    flex-shrink: 0;
+  }
+  header .title { font-weight: 600; font-size: 12px; }
+  header .tools { display: flex; align-items: center; gap: 8px; }
+  header .tools label { display: flex; align-items: center; gap: 4px; color: var(--text-2); }
+  header .tools input { width: 42px; }
+
+  /* Hide number input spinners */
+  input[type="number"] { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; }
+  input[type="number"]::-webkit-outer-spin-button,
+  input[type="number"]::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  main { flex: 1; overflow-y: auto; padding: 12px; position: relative; }
+
+  .muted { color: var(--text-2); }
+  .center-msg {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; height: 100%; gap: 10px; color: var(--text-2); padding: 24px;
+  }
+
+  .field { margin-bottom: 10px; }
+  .field label { display: block; margin-bottom: 4px; color: var(--text-2); }
+  .field label .req { color: var(--brand); }
+  input[type="text"], input[type="number"], textarea {
+    width: 100%; padding: 6px 8px; border: 1px solid var(--border);
+    border-radius: 4px; background: var(--bg); color: var(--text);
+    font-family: inherit; font-size: 11px; resize: vertical;
+  }
+  textarea { min-height: 34px; line-height: 1.4; }
+  input:focus, textarea:focus { outline: 1px solid var(--brand); border-color: var(--brand); }
+
+  button {
+    padding: 7px 12px; border-radius: 6px; border: 1px solid var(--border);
+    background: var(--bg); color: var(--text); font-family: inherit; font-size: 11px;
+    cursor: pointer; font-weight: 500;
+  }
+  button:hover:not(:disabled) { background: var(--bg-hover); }
+  button.primary { background: var(--brand); color: var(--brand-text); border-color: var(--brand); }
+  button.primary:hover:not(:disabled) { filter: brightness(1.05); }
+  button.primary:disabled { opacity: 0.38; cursor: default; }
+  button.ghost { border-color: transparent; background: transparent; color: var(--text-2); }
+  button.ghost:hover:not(:disabled) { background: var(--bg-hover); }
+  button.full { width: 100%; }
+  button.sm { padding: 4px 8px; }
+
+  .var-head {
+    background: var(--bg-2); border-radius: 6px; padding: 8px 10px; margin-bottom: 12px;
+  }
+  .var-head .leaf { font-weight: 600; word-break: break-all; }
+  .var-head .grp { color: var(--text-2); font-size: 10px; word-break: break-all; margin-top: 2px; }
+  .var-head .kind { color: var(--text-2); font-size: 10px; margin-top: 2px; }
+
+  .error-banner {
+    display: flex; align-items: flex-start; gap: 8px;
+    background: var(--red-bg); border: 1px solid var(--red);
+    border-radius: 6px; padding: 8px 10px; margin-bottom: 12px;
+    color: var(--red); font-size: 11px; line-height: 1.4;
+  }
+
+  .mode-tag {
+    display: inline-block; font-size: 10px; color: var(--text-2);
+    margin-bottom: 4px; text-transform: uppercase; letter-spacing: .03em;
+  }
+
+  .actions { display: flex; gap: 8px; margin-top: 4px; }
+  .actions button { flex: 1; }
+
+  .divider { height: 1px; background: var(--border); margin: 14px 0; }
+
+  /* ---- List view ---- */
+  /* Sticky header sits inside main (which has padding:12px).
+     Negative margins pull it flush to the main edges; top:0 sticks it there. */
+  .list-sticky {
+    position: sticky;
+    top: -12px;
+    margin: -12px -12px 0;
+    padding: 10px 12px;
+    background: var(--bg);
+    border-bottom: 1px solid var(--border);
+    z-index: 10;
+  }
+  .list-sticky .list-nav {
+    display: flex; align-items: center; gap: 6px; margin-bottom: 8px;
+  }
+  .list-sticky .list-nav .grp-label {
+    font-size: 10px; color: var(--text-2); flex: 1; min-width: 0;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .list-sticky .list-actions {
+    display: flex; gap: 6px; margin-bottom: 8px;
+  }
+  .list-sticky .list-actions button { flex: 1; }
+  .list-body { padding-top: 10px; }
+
+  .list { display: flex; flex-direction: column; gap: 2px; }
+  .list-item {
+    padding: 7px 9px; border-radius: 6px; cursor: pointer; border: 1px solid transparent;
+  }
+  .list-item:hover { background: var(--bg-hover); }
+  .list-item.current { background: var(--bg-sel); border-color: var(--brand); }
+  .list-item .li-leaf { font-weight: 600; word-break: break-all; }
+  .list-item .li-val { color: var(--text-2); margin-top: 2px; word-break: break-word; }
+  .list-item .li-current-tag { color: var(--brand); font-size: 10px; font-weight: 600; }
+  .list-item .li-grp { color: var(--text-2); font-size: 10px; margin-top: 2px; word-break: break-all; }
+  .list-section-label {
+    font-size: 10px; color: var(--text-2); padding: 8px 2px 4px;
+    text-transform: uppercase; letter-spacing: .05em;
+  }
+
+  .preview {
+    font-family: ui-monospace, Menlo, monospace; background: var(--bg-2);
+    padding: 6px 8px; border-radius: 4px; word-break: break-all;
+  }
+  .back { margin-bottom: 10px; }
+</style>
+</head>
+<body>
+  <header>
+    <div class="title">language</div>
+    <div class="tools">
+      <label>Max len <input id="maxlen" type="number" min="1" value="20" /></label>
+      <button id="cleanup" class="sm">Clean up variables</button>
+    </div>
+  </header>
+  <main id="main"></main>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const main = $("main");
+
+  let S = {
+    selection: null,
+    modes: [], defaultModeId: null,
+    hasVar: false, varMissing: false, variable: null, bindingKind: null,
+    groupPath: "", groupVars: [], allVars: [], recentIds: [], nodeName: "",
+    multiCount: 0,
+    view: "primary",
+    listMode: "swap",
+    search: "",
+    searchAll: false,
+  };
+
+  const maxLen = () => Math.max(1, parseInt($("maxlen").value, 10) || 20);
+
+  function cleanLeaf(value) {
+    return String(value || "")
+      .replace(/[\x00-\x2C\x2E-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]/g, "-")
+      .replace(/-+/g, "-")
+      .replace(/^-+|-+$/g, "")
+      .slice(0, maxLen())
+      .replace(/-+$/g, "");
+  }
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  function post(msg) { parent.postMessage({ pluginMessage: msg }, "*"); }
+
+  // ---- incoming -----------------------------------------------------------
+  onmessage = (e) => {
+    const msg = e.data.pluginMessage;
+    if (!msg) return;
+    if (msg.type === "state") {
+      Object.assign(S, {
+        selection:    msg.selection,
+        modes:        msg.modes || [],
+        defaultModeId: msg.defaultModeId || null,
+        hasVar:       !!msg.hasVar,
+        varMissing:   !!msg.varMissing,
+        variable:     msg.variable || null,
+        bindingKind:  msg.bindingKind || null,
+        groupPath:    msg.groupPath || "",
+        groupVars:    msg.groupVars || [],
+        allVars:      msg.allVars || [],
+        recentIds:    msg.recentIds || [],
+        multiCount:   msg.count || 0,
+        nodeName:     msg.nodeName || "",
+      });
+      S.view = "primary";
+      S.search = "";
+      S.searchAll = false;
+      render();
+    } else if (msg.type === "cleanup-result") {
+      renderReport(msg);
+    }
+  };
+
+  // ---- render -------------------------------------------------------------
+  function render() {
+    if (S.selection === "no-collection") return renderMessage(
+      'No collection named "language"',
+      'Create a variable collection called "language" with string variables to use this plugin.'
+    );
+    if (S.selection === "none") return renderMessage(
+      "Nothing selected", "Select a text layer to view or edit its language variable."
+    );
+    if (S.selection === "multiple") return renderMessage(
+      "Multiple layers selected", "Select only text layers or component instances to work with multiple at once."
+    );
+    if (S.selection === "unsupported") return renderMessage(
+      "Unsupported layer", "Select a text layer, or a component instance that exposes a text property."
+    );
+    if (S.selection === "multi-node") return renderMulti();
+    if (S.selection !== "node") return renderMessage("…", "");
+
+    if (S.view === "list")   return renderList(true);
+    if (S.view === "create") return renderCreate();
+    return renderPrimary();
+  }
+
+  function renderMessage(title, body) {
+    main.innerHTML =
+      '<div class="center-msg"><div style="font-weight:600;color:var(--text)">' +
+      esc(title) + '</div><div>' + esc(body) + "</div></div>";
+  }
+
+  // ---- primary view -------------------------------------------------------
+  function renderPrimary() {
+    if (S.hasVar) return renderEdit();
+
+    let html = "";
+
+    if (S.varMissing) {
+      html +=
+        '<div class="error-banner">' +
+        '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" style="flex-shrink:0;margin-top:1px">' +
+        '<path d="M8 2L14 13H2L8 2Z" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/>' +
+        '<path d="M8 6.5V9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
+        '<circle cx="8" cy="11.5" r="0.75" fill="currentColor"/>' +
+        '</svg>' +
+        '<span>Linked variable not found — it may have been deleted. Assign a new one.</span>' +
+        "</div>";
+    } else {
+      html +=
+        '<div class="var-head"><div class="leaf">No variable linked</div>' +
+        '<div class="grp">Group: ' + esc(S.groupPath || "(page root)") + "</div></div>";
+    }
+
+    html += '<button id="assign" class="primary full">Assign a variable</button>';
+    main.innerHTML = html;
+    $("assign").onclick = () => { S.listMode = "assign"; S.view = "list"; S.search = ""; render(); };
+  }
+
+  // ---- edit view ----------------------------------------------------------
+  function renderEdit() {
+    const v = S.variable;
+    let html =
+      '<div class="var-head">' +
+      '<div class="leaf">' + esc(v.leaf) + "</div>" +
+      '<div class="grp">' + esc(v.group || "(page root)") + "</div>" +
+      '<div class="kind">Bound via ' +
+      (S.bindingKind === "property" ? "component text property" : "text characters") +
+      "</div></div>";
+
+    // Capture original values to drive confirm-button disabled state.
+    const originals = {};
+    for (let i = 0; i < S.modes.length; i++) {
+      const m = S.modes[i];
+      const raw = v.valuesByMode[m.modeId];
+      originals[m.modeId] = typeof raw === "string" ? raw : null;
+    }
+
+    html += '<div id="modes">';
+    for (let i = 0; i < S.modes.length; i++) {
+      const m = S.modes[i];
+      const val = v.valuesByMode[m.modeId];
+      const isAlias = val === null;
+      html +=
+        '<div class="field">' +
+        '<span class="mode-tag">' + esc(m.name) + (m.isDefault ? " · default" : "") + "</span>" +
+        '<textarea data-mode="' + m.modeId + '"' + (isAlias ? " disabled" : "") + ">" +
+        esc(isAlias ? "" : val) + "</textarea>" +
+        (isAlias ? '<div class="muted" style="margin-top:4px">References another variable — not editable here.</div>' : "") +
+        "</div>";
+    }
+    html += "</div>";
+
+    html +=
+      '<div class="actions">' +
+      '<button id="cancel">Cancel</button>' +
+      '<button id="confirm" class="primary" disabled>Confirm</button>' +
+      "</div>" +
+      '<div class="divider"></div>' +
+      '<button id="swap" class="full">Swap variable</button>';
+
+    main.innerHTML = html;
+
+    const confirmBtn = $("confirm");
+
+    // Enable confirm only when at least one editable field has changed.
+    const checkChanged = () => {
+      let changed = false;
+      const areas = main.querySelectorAll("textarea[data-mode]");
+      for (let i = 0; i < areas.length; i++) {
+        const t = areas[i];
+        if (!t.disabled && t.value !== (originals[t.getAttribute("data-mode")] || "")) {
+          changed = true;
+          break;
+        }
+      }
+      confirmBtn.disabled = !changed;
+    };
+
+    const areas = main.querySelectorAll("textarea[data-mode]");
+    for (let i = 0; i < areas.length; i++) {
+      areas[i].oninput = checkChanged;
+    }
+
+    $("cancel").onclick = () => render();
+    confirmBtn.onclick = () => {
+      const values = {};
+      const all = main.querySelectorAll("textarea[data-mode]");
+      for (let i = 0; i < all.length; i++) {
+        if (!all[i].disabled) values[all[i].getAttribute("data-mode")] = all[i].value;
+      }
+      post({ type: "save", values });
+    };
+    $("swap").onclick = () => { S.listMode = "swap"; S.view = "list"; S.search = ""; render(); };
+  }
+
+  // ---- list view ----------------------------------------------------------
+  function matchesSearch(v, q) {
+    if (!q) return true;
+    q = q.toLowerCase();
+    if (v.leaf.toLowerCase().includes(q) || v.name.toLowerCase().includes(q)) return true;
+    for (const mid in v.valuesByMode) {
+      const val = v.valuesByMode[mid];
+      if (typeof val === "string" && val.toLowerCase().includes(q)) return true;
+    }
+    return false;
+  }
+
+  // Renders only the scrollable list body — called on every search keystroke
+  // without touching the sticky header, so the <input> is never destroyed
+  // and Korean IME composition works correctly.
+  function renderListBody() {
+    const listBody = $("list-body");
+    if (!listBody) return;
+
+    const isMulti   = S.selection === "multi-node";
+    const isAllMode = isMulti || S.searchAll;
+    const swapMsg   = isMulti ? "multi-swap" : "swap";
+    const currentId = S.variable ? S.variable.id : null;
+
+    let vars, sectionLabel = null;
+
+    if (isAllMode && !S.search) {
+      // No search query — show recently used variables ordered by recency.
+      const recentOrder = {};
+      for (let i = 0; i < S.recentIds.length; i++) recentOrder[S.recentIds[i]] = i;
+      vars = S.allVars
+        .filter(v => Object.prototype.hasOwnProperty.call(recentOrder, v.id))
+        .sort((a, b) => recentOrder[a.id] - recentOrder[b.id]);
+      if (vars.length === 0) {
+        listBody.innerHTML =
+          '<div class="muted" style="padding:4px 2px">No recent variables. Start typing to search.</div>';
+        return;
+      }
+      sectionLabel = "Recent";
+    } else {
+      vars = (isAllMode ? S.allVars : S.groupVars).filter(v => matchesSearch(v, S.search));
+      if (vars.length === 0) {
+        const noVarsAtAll = !isAllMode && S.groupVars.length === 0;
+        listBody.innerHTML =
+          '<div class="muted" style="padding:4px 2px">' +
+          (noVarsAtAll ? "No variables in this group." : "No variables match your search.") +
+          "</div>";
+        return;
+      }
+    }
+
+    const defId = S.defaultModeId;
+    let html = sectionLabel
+      ? '<div class="list-section-label">' + esc(sectionLabel) + "</div>"
+      : "";
+    html += '<div class="list">';
+    for (let i = 0; i < vars.length; i++) {
+      const v = vars[i];
+      const isCurrent = !isMulti && v.id === currentId;
+      const preview = v.valuesByMode[defId];
+      html +=
+        '<div class="list-item' + (isCurrent ? " current" : "") + '" data-id="' + v.id + '">' +
+        '<div class="li-leaf">' + esc(v.leaf) +
+        (isCurrent ? ' <span class="li-current-tag">current</span>' : "") + "</div>" +
+        '<div class="li-val">' + esc(typeof preview === "string" ? preview : "—") + "</div>" +
+        (isAllMode ? '<div class="li-grp">' + esc(v.group || "(page root)") + "</div>" : "") +
+        "</div>";
+    }
+    html += "</div>";
+
+    listBody.innerHTML = html;
+    listBody.querySelectorAll(".list-item").forEach((el) => {
+      el.onclick = () => post({ type: swapMsg, variableId: el.getAttribute("data-id") });
+    });
+  }
+
+  function renderList(scrollToCurrent) {
+    const currentId = S.variable ? S.variable.id : null;
+
+    // Sticky header — rebuilt once per navigation; stable DOM so IME is not disrupted.
+    let html =
+      '<div class="list-sticky">' +
+      '<div class="list-nav">' +
+      '<button id="back" class="ghost sm">← Back</button>' +
+      '<span class="grp-label">' + esc(S.searchAll ? "All groups" : ("Group: " + (S.groupPath || "(page root)"))) + "</span>" +
+      "</div>" +
+      '<div class="list-actions">' +
+      '<input id="search" type="text" placeholder="Search name or value" value="' + esc(S.search) + '" />' +
+      '<button id="create" class="primary sm" style="white-space:nowrap">+ New variable</button>' +
+      "</div>" +
+      '<button id="toggleScope" class="ghost sm" style="width:100%;text-align:left;padding:3px 2px">' +
+      (S.searchAll
+        ? "← Search this group only"
+        : "Search outside this group") +
+      "</button>" +
+      "</div>" +
+      '<div id="list-body" class="list-body"></div>';
+
+    main.innerHTML = html;
+
+    $("back").onclick = () => { S.view = "primary"; S.searchAll = false; render(); };
+    $("create").onclick = () => { S.view = "create"; render(); };
+    $("toggleScope").onclick = () => { S.searchAll = !S.searchAll; renderList(false); };
+
+    // Wire up search with IME support: never re-render the sticky header,
+    // only update the list body via renderListBody().
+    const search = $("search");
+    let composing = false;
+    search.addEventListener("compositionstart", () => { composing = true; });
+    search.addEventListener("compositionend", () => {
+      composing = false;
+      S.search = search.value;
+      renderListBody();
+    });
+    search.addEventListener("input", () => {
+      if (composing) return;
+      S.search = search.value;
+      renderListBody();
+    });
+
+    renderListBody();
+
+    // Center the active variable in the list only on first open.
+    if (scrollToCurrent && S.listMode === "swap" && currentId) {
+      const cur = main.querySelector(".list-item.current");
+      if (cur) cur.scrollIntoView({ block: "center" });
+    }
+  }
+
+  // ---- multi-select view --------------------------------------------------
+  // Shown when multiple valid text/instance layers are selected.
+  // Always operates in "all vars" mode — no group filter, no create button.
+  function renderMulti() {
+    const count = S.multiCount;
+    let html =
+      '<div class="list-sticky">' +
+      '<div class="list-nav" style="margin-bottom:8px">' +
+      '<span style="font-weight:600;font-size:12px">' +
+      count + " text layer" + (count === 1 ? "" : "s") + " selected" +
+      "</span>" +
+      "</div>" +
+      '<div class="list-actions">' +
+      '<input id="search" type="text" placeholder="Search name or value" value="' + esc(S.search) + '" />' +
+      "</div>" +
+      "</div>" +
+      '<div id="list-body" class="list-body"></div>';
+
+    main.innerHTML = html;
+
+    const search = $("search");
+    let composing = false;
+    search.addEventListener("compositionstart", () => { composing = true; });
+    search.addEventListener("compositionend", () => {
+      composing = false; S.search = search.value; renderListBody();
+    });
+    search.addEventListener("input", () => {
+      if (composing) return; S.search = search.value; renderListBody();
+    });
+
+    renderListBody();
+  }
+
+  // ---- create view --------------------------------------------------------
+  function renderCreate() {
+    let html =
+      '<button id="back" class="ghost sm back">← Back</button>' +
+      '<div class="field"><span class="mode-tag">New variable in: ' +
+      esc(S.groupPath || "(page root)") + "</span></div>";
+
+    for (let i = 0; i < S.modes.length; i++) {
+      const m = S.modes[i];
+      html +=
+        '<div class="field">' +
+        '<label>' + esc(m.name) +
+        (m.isDefault ? ' · default <span class="req">*</span>' : "") + "</label>" +
+        '<textarea data-mode="' + m.modeId + '" data-default="' + (m.isDefault ? "1" : "") +
+        '" placeholder="' + (m.isDefault ? "Required" : 'Blank → "-"') + '"></textarea>' +
+        "</div>";
+    }
+
+    html +=
+      '<div class="field"><label>Generated name (from default value)</label>' +
+      '<div class="preview" id="namePreview">—</div></div>' +
+      '<button id="createBtn" class="primary full">Create &amp; assign</button>';
+
+    main.innerHTML = html;
+
+    const defArea = main.querySelector('textarea[data-default="1"]');
+    const prefix = S.groupPath ? S.groupPath + "/" : "";
+    const updatePreview = () => {
+      const el = $("namePreview");
+      if (!el) return;
+      const leaf = cleanLeaf(defArea ? defArea.value : "");
+      el.textContent = leaf ? prefix + leaf : "—";
+    };
+    if (defArea) defArea.oninput = updatePreview;
+    $("maxlen").oninput = updatePreview;
+    updatePreview();
+
+    $("back").onclick = () => { $("maxlen").oninput = null; S.view = "list"; render(); };
+    $("createBtn").onclick = () => {
+      const values = {};
+      const areas = main.querySelectorAll("textarea[data-mode]");
+      for (let i = 0; i < areas.length; i++) {
+        values[areas[i].getAttribute("data-mode")] = areas[i].value;
+      }
+      post({ type: "create", values, maxLen: maxLen() });
+    };
+  }
+
+  // ---- cleanup report -----------------------------------------------------
+  // Shown after "Clean up variables" when one or more variables are missing
+  // their key layer. Lists where each one expects its key so it can be re-made.
+  // Each missing-key item has a Delete button that removes the variable in place.
+  function renderReport(r) {
+    S.reportFlagged = (r.flagged     || []).slice();
+    S.reportBroken  = (r.brokenNodes || []).slice();
+    S.reportStats   = { renamed: r.renamed, regrouped: r.regrouped || 0 };
+    renderReportView();
+  }
+
+  function renderReportView() {
+    const r       = S.reportStats  || { renamed: 0, regrouped: 0 };
+    const flagged = S.reportFlagged || [];
+    const broken  = S.reportBroken  || [];
+
+    let html = '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Cleanup complete</div>';
+    html += '<div class="muted" style="margin-bottom:10px">' +
+      r.renamed + " renamed" +
+      (r.regrouped ? " · " + r.regrouped + " regrouped" : "") + ".</div>";
+
+    if (flagged.length) {
+      html +=
+        '<div class="error-banner" style="display:block">' +
+        "⚠️ " + flagged.length + " variable" + (flagged.length === 1 ? "" : "s") +
+        " missing a key layer. Create a text layer at the location shown and link the " +
+        "variable, then run Clean up variables again to clear the flag." +
+        "</div>";
+      html += '<div class="list" style="margin-top:8px">';
+      for (let i = 0; i < flagged.length; i++) {
+        const f = flagged[i];
+        html +=
+          '<div class="list-item" style="cursor:default;display:flex;align-items:center;gap:8px">' +
+          '<div style="flex:1;min-width:0">' +
+          '<div class="li-leaf">⚠️ ' + esc(f.leaf) + "</div>" +
+          '<div class="li-grp">' + esc(f.group || "(no group)") + "</div>" +
+          "</div>" +
+          '<button class="sm" style="color:var(--red);border-color:var(--red);flex-shrink:0" data-del="' + i + '">Delete</button>' +
+          "</div>";
+      }
+      html += "</div>";
+    }
+
+    if (broken.length) {
+      html += '<div style="font-weight:600;font-size:11px;margin-top:' + (flagged.length ? "14px" : "0") + ';margin-bottom:6px">Text layers with broken link</div>';
+      html += '<div class="list">';
+      for (let i = 0; i < broken.length; i++) {
+        const b = broken[i];
+        html +=
+          '<div class="list-item" style="cursor:pointer;display:flex;align-items:center;gap:8px" data-nav="' + esc(b.nodeId) + '">' +
+          '<div style="flex:1;min-width:0">' +
+          '<div class="li-leaf">' + esc(b.nodeName) + "</div>" +
+          '<div class="li-grp">' + esc(b.groupPath || "(no group)") + "</div>" +
+          "</div>" +
+          '<button class="sm" style="flex-shrink:0" data-unlink="' + i + '">Unlink</button>' +
+          "</div>";
+      }
+      html += "</div>";
+    }
+
+    html += '<div class="divider"></div><button id="reportDone" class="primary full">Done</button>';
+    main.innerHTML = html;
+
+    main.querySelectorAll("[data-del]").forEach((btn) => {
+      btn.onclick = () => {
+        const idx = parseInt(btn.getAttribute("data-del"), 10);
+        const f = S.reportFlagged[idx];
+        if (!f) return;
+        post({ type: "delete-var", variableId: f.id });
+        S.reportFlagged.splice(idx, 1);
+        renderReportView();
+      };
+    });
+
+    main.querySelectorAll("[data-nav]").forEach((item) => {
+      item.onclick = () => post({ type: "navigate-to-node", nodeId: item.getAttribute("data-nav") });
+    });
+
+    main.querySelectorAll("[data-unlink]").forEach((btn) => {
+      btn.onclick = (e) => {
+        e.stopPropagation(); // prevent row click from also navigating
+        const idx = parseInt(btn.getAttribute("data-unlink"), 10);
+        const b = S.reportBroken[idx];
+        if (!b) return;
+        post({ type: "unlink-node", nodeId: b.nodeId });
+        S.reportBroken.splice(idx, 1);
+        renderReportView();
+      };
+    });
+
+    $("reportDone").onclick = () => post({ type: "refresh" });
+  }
+
+  // ---- header tools -------------------------------------------------------
+  $("cleanup").onclick = () => {
+    if (confirm('Clean up every variable in the "language" collection: rename to match values, re-group moved layers, and flag variables whose key layer is missing. This cannot be undone.')) {
+      post({ type: "cleanup", maxLen: maxLen() });
+    }
+  };
+
+  post({ type: "ready" });
+</script>
+</body>
+</html>
