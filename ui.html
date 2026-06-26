@@ -25,14 +25,16 @@
   body { display: flex; flex-direction: column; height: 100vh; }
 
   header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 8px 12px; border-bottom: 1px solid var(--border); gap: 8px;
+    display: flex; flex-direction: column; gap: 8px;
+    padding: 8px 12px; border-bottom: 1px solid var(--border);
     flex-shrink: 0;
   }
+  header .hrow { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  header .hrow.btns { gap: 6px; }
+  header .hrow.btns button { flex: 1; }
   header .title { font-weight: 600; font-size: 12px; }
-  header .tools { display: flex; align-items: center; gap: 8px; }
-  header .tools label { display: flex; align-items: center; gap: 4px; color: var(--text-2); }
-  header .tools input { width: 42px; }
+  header .maxlen-lbl { display: flex; align-items: center; gap: 4px; color: var(--text-2); }
+  header .maxlen-lbl input { width: 42px; }
 
   /* Hide number input spinners */
   input[type="number"] { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; }
@@ -145,9 +147,12 @@
 </head>
 <body>
   <header>
-    <div class="title">language</div>
-    <div class="tools">
-      <label>Max len <input id="maxlen" type="number" min="1" value="20" /></label>
+    <div class="hrow">
+      <div class="title">language</div>
+      <label class="maxlen-lbl">Max len <input id="maxlen" type="number" min="1" value="20" /></label>
+    </div>
+    <div class="hrow btns">
+      <button id="exportcsv" class="sm">Export CSV</button>
       <button id="cleanup" class="sm">Clean up variables</button>
     </div>
   </header>
@@ -210,6 +215,12 @@
       S.search = "";
       S.searchAll = false;
       render();
+    } else if (msg.type === "export-data") {
+      if (!msg.vars || !msg.vars.length) {
+        post({ type: "notify", message: 'No variables found in "language" collection.' });
+        return;
+      }
+      downloadCSV(generateCSV(msg.vars, msg.modes));
     } else if (msg.type === "cleanup-result") {
       renderReport(msg);
     }
@@ -650,6 +661,67 @@
 
     $("reportDone").onclick = () => post({ type: "refresh" });
   }
+
+  // ---- CSV export ---------------------------------------------------------
+  function parseGroupPath(groupPath) {
+    var sections = [], layer = "";
+    if (!groupPath) return { sections: sections, layer: layer };
+    var parts = groupPath.split("/");
+    for (var i = 0; i < parts.length; i++) {
+      if (parts[i].indexOf("section-") === 0) sections.push(parts[i].slice(8));
+      else if (parts[i].indexOf("layer-") === 0) layer = parts[i].slice(6);
+    }
+    return { sections: sections, layer: layer };
+  }
+
+  function csvCell(s) {
+    s = String(s == null ? "" : s);
+    if (s.search(/[,"\r\n]/) !== -1) s = '"' + s.replace(/"/g, '""') + '"';
+    return s;
+  }
+
+  function generateCSV(vars, modes) {
+    var sorted = vars.slice().sort(function(a, b) {
+      var na = (a.group || "") + "/" + a.leaf;
+      var nb = (b.group || "") + "/" + b.leaf;
+      return na < nb ? -1 : na > nb ? 1 : 0;
+    });
+    var rows = [];
+    var header = ["1st Section", "2nd Section", "3rd Section", "Layer Name", "Variable Name"];
+    for (var i = 0; i < modes.length; i++) header.push(modes[i].name);
+    rows.push(header.map(csvCell).join(","));
+    for (var vi = 0; vi < sorted.length; vi++) {
+      var v = sorted[vi];
+      var parsed = parseGroupPath(v.group);
+      var row = [
+        parsed.sections[0] || "",
+        parsed.sections[1] || "",
+        parsed.sections[2] || "",
+        parsed.layer || "",
+        v.leaf.replace(/^⚠️\s*/, ""),
+      ];
+      for (var mi = 0; mi < modes.length; mi++) {
+        var val = v.valuesByMode[modes[mi].modeId];
+        row.push(typeof val === "string" ? val : "");
+      }
+      rows.push(row.map(csvCell).join(","));
+    }
+    return rows.join("\r\n");
+  }
+
+  function downloadCSV(content) {
+    var blob = new Blob(["﻿" + content], { type: "text/csv;charset=utf-8;" });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = "language-variables.csv";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
+
+  $("exportcsv").onclick = () => post({ type: "export-csv" });
 
   // ---- header tools -------------------------------------------------------
   $("cleanup").onclick = () => {

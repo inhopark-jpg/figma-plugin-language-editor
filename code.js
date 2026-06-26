@@ -193,9 +193,10 @@ async function pushState() {
   }
 
   var sel = figma.currentPage.selection;
-  var common = { modes: ctx.modes, defaultModeId: ctx.defaultModeId };
   var recentIds = await getRecentIds();
   var allVarsSerialized = ctx.stringVars.map(serializeVar);
+  // allVars included in every branch so Export CSV works regardless of selection.
+  var common = { modes: ctx.modes, defaultModeId: ctx.defaultModeId, allVars: allVarsSerialized, recentIds: recentIds };
 
   if (sel.length === 0) {
     figma.ui.postMessage(Object.assign({ type: "state", selection: "none" }, common));
@@ -527,6 +528,16 @@ async function handleUnlinkNode(nodeId) {
   notify("Variable unlinked.");
 }
 
+async function handleExportCsv() {
+  var ctx = await getContext();
+  if (!ctx.collection) return notify('No "language" collection found.');
+  figma.ui.postMessage({
+    type: "export-data",
+    vars: ctx.stringVars.map(serializeVar),
+    modes: ctx.modes,
+  });
+}
+
 async function handleDeleteVar(variableId) {
   var ctx = await getContext();
   if (!ctx.collection) return notify('No "language" collection found.');
@@ -548,6 +559,8 @@ function notify(message) {
 figma.ui.onmessage = async function(msg) {
   try {
     if (msg.type === "ready")   { await pushState(); }
+    else if (msg.type === "notify")  { figma.notify(msg.message); }
+    else if (msg.type === "export-csv") { await handleExportCsv(); }
     else if (msg.type === "save")    { await handleSave(msg.values); }
     else if (msg.type === "swap")       { await handleSwap(msg.variableId); }
     else if (msg.type === "multi-swap") { await handleMultiSwap(msg.variableId); }
