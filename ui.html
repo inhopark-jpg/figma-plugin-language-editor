@@ -33,8 +33,14 @@
   header .hrow.btns { gap: 6px; }
   header .hrow.btns button { flex: 1; }
   header .title { font-weight: 600; font-size: 12px; }
-  header .maxlen-lbl { display: flex; align-items: center; gap: 4px; color: var(--text-2); }
-  header .maxlen-lbl input { width: 42px; }
+  header .lang-row { justify-content: flex-end; }
+  .lang-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+  .lang-btn {
+    border: none; border-radius: 0; padding: 3px 10px; font-size: 11px;
+    background: var(--bg); color: var(--text-2); font-weight: 500; cursor: pointer;
+  }
+  .lang-btn.active { background: var(--brand); color: var(--brand-text); }
+  .lang-btn:hover:not(.active) { background: var(--bg-hover); }
 
   /* Hide number input spinners */
   input[type="number"] { -webkit-appearance: textfield; -moz-appearance: textfield; appearance: textfield; }
@@ -147,14 +153,23 @@
 </head>
 <body>
   <header>
+    <div class="hrow lang-row">
+      <div class="lang-toggle">
+        <button id="lang-en" class="lang-btn">EN</button>
+        <button id="lang-ko" class="lang-btn">한국어</button>
+      </div>
+    </div>
     <div class="hrow">
       <div class="title">language</div>
-      <label class="maxlen-lbl">Max len <input id="maxlen" type="number" min="1" value="20" /></label>
     </div>
     <div class="hrow btns">
       <button id="exportcsv" class="sm">Export CSV</button>
+      <button id="importcsv" class="sm">Import CSV</button>
+    </div>
+    <div class="hrow btns">
       <button id="cleanup" class="sm">Clean up variables</button>
     </div>
+    <input id="fileinput" type="file" accept=".csv,text/csv" style="display:none" />
   </header>
   <main id="main"></main>
 
@@ -164,6 +179,7 @@
 
   let S = {
     selection: null,
+    lang: "en",
     modes: [], defaultModeId: null,
     hasVar: false, varMissing: false, variable: null, bindingKind: null,
     groupPath: "", groupVars: [], allVars: [], recentIds: [], nodeName: "",
@@ -174,16 +190,169 @@
     searchAll: false,
   };
 
-  const maxLen = () => Math.max(1, parseInt($("maxlen").value, 10) || 20);
+  // ---- i18n ---------------------------------------------------------------
+  const I18N = {
+    en: {
+      exportCsv: "Export CSV",
+      importCsv: "Import CSV",
+      cleanup: "Clean up variables",
+      noCollectionTitle: 'No collection named "language"',
+      noCollectionBody: 'Create a variable collection called "language" with string variables to use this plugin.',
+      nothingTitle: "Nothing selected",
+      nothingBody: "Select a text layer to view or edit its language variable.",
+      multipleTitle: "Multiple layers selected",
+      multipleBody: "Select only text layers or component instances to work with multiple at once.",
+      unsupportedTitle: "Unsupported layer",
+      unsupportedBody: "Select a text layer, or a component instance that exposes a text property.",
+      varMissingBanner: "Linked variable not found — it may have been deleted. Assign a new one.",
+      noVarLinked: "No variable linked",
+      groupPrefix: "Group: ",
+      pageRoot: "(page root)",
+      assignVar: "Assign a variable",
+      boundProperty: "Bound via component text property",
+      boundText: "Bound via text characters",
+      defaultSuffix: " · default",
+      aliasNote: "References another variable — not editable here.",
+      cancel: "Cancel",
+      confirm: "Confirm",
+      swapVar: "Swap variable",
+      noRecent: "No recent variables. Start typing to search.",
+      recent: "Recent",
+      noInGroup: "No variables in this group.",
+      noMatch: "No variables match your search.",
+      current: "current",
+      back: "← Back",
+      allGroups: "All groups",
+      searchPlaceholder: "Search name or value",
+      newVariable: "+ New variable",
+      searchThisOnly: "← Search this group only",
+      searchOutside: "Search outside this group",
+      layersSelected: function (n) { return n + " text layer" + (n === 1 ? "" : "s") + " selected"; },
+      newVarIn: "New variable in: ",
+      required: "Required",
+      blankDash: 'Blank → "--"',
+      idAssignedNote: "A unique ID will be assigned as this variable's name.",
+      createAssign: "Create & assign",
+      cleanupComplete: "Cleanup complete",
+      cleanupStat: function (p) {
+        return p.renamed + " renamed" +
+          (p.migrated ? " · " + p.migrated + " given IDs" : "") +
+          (p.regrouped ? " · " + p.regrouped + " regrouped" : "") + ".";
+      },
+      flaggedBanner: function (n) {
+        return "⚠️ " + n + " variable" + (n === 1 ? "" : "s") +
+          " missing a key layer. Create a text layer at the location shown and link the variable, then run Clean up variables again to clear the flag.";
+      },
+      del: "Delete",
+      brokenHeading: "Text layers with broken link",
+      unlink: "Unlink",
+      missingHeading: "Variables with missing values",
+      missingNote: 'These modes are empty or "--" (untranslated).',
+      missingPrefix: "missing: ",
+      noGroup: "(no group)",
+      noLocation: "(no location)",
+      showingSome: function (shown, total) { return "Showing first " + shown + " of " + total + "."; },
+      done: "Done",
+      importComplete: "Import complete",
+      importStat: function (p) {
+        return (p.updated || 0) + " variable" + (p.updated === 1 ? "" : "s") + " updated" +
+          (p.newModes ? " · " + p.newModes + " new mode" + (p.newModes === 1 ? "" : "s") : "") + ".";
+      },
+      newModesLabel: "New modes: ",
+      unmatchedBanner: function (n) {
+        return n + " row" + (n === 1 ? "" : "s") +
+          " did not match any variable ID and were skipped — no variables were created.";
+      },
+      blank: "(blank)",
+      importConfirm: "Import a CSV to overwrite variable values.\n\nVariables are matched by their ID (the Variable Name column). Matched rows have their mode values replaced by the file; new mode columns are added. Rows with no matching variable are skipped (nothing new is created). This cannot be undone.",
+      cleanupConfirm: 'Clean up every variable in the "language" collection: assign IDs to any without one, re-group moved layers, flag missing key layers, and report missing values. This cannot be undone.',
+      csvNoData: "CSV has no data rows.",
+      noVarsFound: 'No variables found in "language" collection.',
+    },
+    ko: {
+      exportCsv: "CSV 내보내기",
+      importCsv: "CSV 가져오기",
+      cleanup: "변수 정리",
+      noCollectionTitle: '"language" 컬렉션이 없습니다',
+      noCollectionBody: '이 플러그인을 사용하려면 문자열 변수가 있는 "language" 컬렉션을 만드세요.',
+      nothingTitle: "선택된 항목 없음",
+      nothingBody: "텍스트 레이어를 선택하여 language 변수를 보거나 편집하세요.",
+      multipleTitle: "여러 레이어가 선택됨",
+      multipleBody: "텍스트 레이어 또는 컴포넌트 인스턴스만 선택하면 여러 개를 한 번에 작업할 수 있습니다.",
+      unsupportedTitle: "지원되지 않는 레이어",
+      unsupportedBody: "텍스트 레이어 또는 텍스트 속성이 있는 컴포넌트 인스턴스를 선택하세요.",
+      varMissingBanner: "연결된 변수를 찾을 수 없습니다 — 삭제되었을 수 있습니다. 새 변수를 지정하세요.",
+      noVarLinked: "연결된 변수 없음",
+      groupPrefix: "그룹: ",
+      pageRoot: "(페이지 루트)",
+      assignVar: "변수 지정",
+      boundProperty: "컴포넌트 텍스트 속성으로 연결됨",
+      boundText: "텍스트 문자로 연결됨",
+      defaultSuffix: " · 기본",
+      aliasNote: "다른 변수를 참조합니다 — 여기서 편집할 수 없습니다.",
+      cancel: "취소",
+      confirm: "확인",
+      swapVar: "변수 교체",
+      noRecent: "최근 변수가 없습니다. 검색하려면 입력하세요.",
+      recent: "최근",
+      noInGroup: "이 그룹에 변수가 없습니다.",
+      noMatch: "검색과 일치하는 변수가 없습니다.",
+      current: "현재",
+      back: "← 뒤로",
+      allGroups: "모든 그룹",
+      searchPlaceholder: "이름 또는 값 검색",
+      newVariable: "+ 새 변수",
+      searchThisOnly: "← 이 그룹만 검색",
+      searchOutside: "이 그룹 외부 검색",
+      layersSelected: function (n) { return "텍스트 레이어 " + n + "개 선택됨"; },
+      newVarIn: "새 변수 위치: ",
+      required: "필수",
+      blankDash: '비워두면 → "--"',
+      idAssignedNote: "이 변수의 이름으로 고유 ID가 지정됩니다.",
+      createAssign: "생성 및 적용",
+      cleanupComplete: "정리 완료",
+      cleanupStat: function (p) {
+        return "이름 변경 " + p.renamed + "개" +
+          (p.migrated ? " · ID 부여 " + p.migrated + "개" : "") +
+          (p.regrouped ? " · 그룹 변경 " + p.regrouped + "개" : "") + ".";
+      },
+      flaggedBanner: function (n) {
+        return "⚠️ 변수 " + n + "개에 키 레이어가 없습니다. 표시된 위치에 텍스트 레이어를 만들고 변수를 연결한 다음 변수 정리를 다시 실행하면 플래그가 사라집니다.";
+      },
+      del: "삭제",
+      brokenHeading: "연결이 끊긴 텍스트 레이어",
+      unlink: "연결 해제",
+      missingHeading: "값이 누락된 변수",
+      missingNote: '이 모드는 비어 있거나 "--"입니다 (미번역).',
+      missingPrefix: "누락: ",
+      noGroup: "(그룹 없음)",
+      noLocation: "(위치 없음)",
+      showingSome: function (shown, total) { return total + "개 중 " + shown + "개 표시."; },
+      done: "완료",
+      importComplete: "가져오기 완료",
+      importStat: function (p) {
+        return "변수 " + (p.updated || 0) + "개 업데이트됨" +
+          (p.newModes ? " · 새 모드 " + p.newModes + "개" : "") + ".";
+      },
+      newModesLabel: "새 모드: ",
+      unmatchedBanner: function (n) {
+        return "변수 ID와 일치하지 않는 행 " + n + "개를 건너뛰었습니다 — 새 변수는 생성되지 않았습니다.";
+      },
+      blank: "(비어 있음)",
+      importConfirm: "CSV를 가져와 변수 값을 덮어씁니다.\n\n변수는 ID(Variable Name 열)로 매칭됩니다. 일치하는 행은 파일의 값으로 모드 값이 교체되고, 새 모드 열은 추가됩니다. 일치하는 변수가 없는 행은 건너뜁니다(새로 생성되지 않음). 이 작업은 되돌릴 수 없습니다.",
+      cleanupConfirm: '"language" 컬렉션의 모든 변수를 정리합니다: ID가 없는 변수에 ID 부여, 이동된 레이어 재그룹화, 키 레이어 없음 표시, 누락된 값 보고. 이 작업은 되돌릴 수 없습니다.',
+      csvNoData: "CSV에 데이터 행이 없습니다.",
+      noVarsFound: '"language" 컬렉션에 변수가 없습니다.',
+    },
+  };
 
-  function cleanLeaf(value) {
-    return String(value || "")
-      .replace(/[\x00-\x2C\x2E-\x2F\x3A-\x40\x5B-\x60\x7B-\x7F]/g, "-")
-      .replace(/-+/g, "-")
-      .replace(/^-+|-+$/g, "")
-      .slice(0, maxLen())
-      .replace(/-+$/g, "");
+  function t(key) {
+    const dict = I18N[S.lang] || I18N.en;
+    let v = dict[key];
+    if (v == null) v = I18N.en[key];
+    return v == null ? key : v;
   }
+
   function esc(s) {
     return String(s == null ? "" : s)
       .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
@@ -211,35 +380,37 @@
         multiCount:   msg.count || 0,
         nodeName:     msg.nodeName || "",
       });
+      if (msg.lang) S.lang = msg.lang;
       S.view = "primary";
       S.search = "";
       S.searchAll = false;
-      render();
+      applyLang();
     } else if (msg.type === "export-data") {
       if (!msg.vars || !msg.vars.length) {
-        post({ type: "notify", message: 'No variables found in "language" collection.' });
+        post({ type: "notify", message: t("noVarsFound") });
         return;
       }
       downloadCSV(generateCSV(msg.vars, msg.modes));
     } else if (msg.type === "cleanup-result") {
       renderReport(msg);
+    } else if (msg.type === "import-result") {
+      renderImportReport(msg);
     }
   };
 
   // ---- render -------------------------------------------------------------
   function render() {
     if (S.selection === "no-collection") return renderMessage(
-      'No collection named "language"',
-      'Create a variable collection called "language" with string variables to use this plugin.'
+      t("noCollectionTitle"), t("noCollectionBody")
     );
     if (S.selection === "none") return renderMessage(
-      "Nothing selected", "Select a text layer to view or edit its language variable."
+      t("nothingTitle"), t("nothingBody")
     );
     if (S.selection === "multiple") return renderMessage(
-      "Multiple layers selected", "Select only text layers or component instances to work with multiple at once."
+      t("multipleTitle"), t("multipleBody")
     );
     if (S.selection === "unsupported") return renderMessage(
-      "Unsupported layer", "Select a text layer, or a component instance that exposes a text property."
+      t("unsupportedTitle"), t("unsupportedBody")
     );
     if (S.selection === "multi-node") return renderMulti();
     if (S.selection !== "node") return renderMessage("…", "");
@@ -269,15 +440,15 @@
         '<path d="M8 6.5V9.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>' +
         '<circle cx="8" cy="11.5" r="0.75" fill="currentColor"/>' +
         '</svg>' +
-        '<span>Linked variable not found — it may have been deleted. Assign a new one.</span>' +
+        '<span>' + esc(t("varMissingBanner")) + '</span>' +
         "</div>";
     } else {
       html +=
-        '<div class="var-head"><div class="leaf">No variable linked</div>' +
-        '<div class="grp">Group: ' + esc(S.groupPath || "(page root)") + "</div></div>";
+        '<div class="var-head"><div class="leaf">' + esc(t("noVarLinked")) + '</div>' +
+        '<div class="grp">' + esc(t("groupPrefix")) + esc(S.groupPath || t("pageRoot")) + "</div></div>";
     }
 
-    html += '<button id="assign" class="primary full">Assign a variable</button>';
+    html += '<button id="assign" class="primary full">' + esc(t("assignVar")) + '</button>';
     main.innerHTML = html;
     $("assign").onclick = () => { S.listMode = "assign"; S.view = "list"; S.search = ""; render(); };
   }
@@ -285,12 +456,13 @@
   // ---- edit view ----------------------------------------------------------
   function renderEdit() {
     const v = S.variable;
+    const titleVal = v.valuesByMode[S.defaultModeId];
     let html =
       '<div class="var-head">' +
-      '<div class="leaf">' + esc(v.leaf) + "</div>" +
-      '<div class="grp">' + esc(v.group || "(page root)") + "</div>" +
-      '<div class="kind">Bound via ' +
-      (S.bindingKind === "property" ? "component text property" : "text characters") +
+      '<div class="leaf">' + esc(typeof titleVal === "string" && titleVal !== "" ? titleVal : "—") + "</div>" +
+      '<div class="grp">ID ' + esc(v.varId || v.leaf) + " · " + esc(v.group || t("pageRoot")) + "</div>" +
+      '<div class="kind">' +
+      esc(S.bindingKind === "property" ? t("boundProperty") : t("boundText")) +
       "</div></div>";
 
     // Capture original values to drive confirm-button disabled state.
@@ -308,21 +480,21 @@
       const isAlias = val === null;
       html +=
         '<div class="field">' +
-        '<span class="mode-tag">' + esc(m.name) + (m.isDefault ? " · default" : "") + "</span>" +
+        '<span class="mode-tag">' + esc(m.name) + (m.isDefault ? esc(t("defaultSuffix")) : "") + "</span>" +
         '<textarea data-mode="' + m.modeId + '"' + (isAlias ? " disabled" : "") + ">" +
         esc(isAlias ? "" : val) + "</textarea>" +
-        (isAlias ? '<div class="muted" style="margin-top:4px">References another variable — not editable here.</div>' : "") +
+        (isAlias ? '<div class="muted" style="margin-top:4px">' + esc(t("aliasNote")) + '</div>' : "") +
         "</div>";
     }
     html += "</div>";
 
     html +=
       '<div class="actions">' +
-      '<button id="cancel">Cancel</button>' +
-      '<button id="confirm" class="primary" disabled>Confirm</button>' +
+      '<button id="cancel">' + esc(t("cancel")) + '</button>' +
+      '<button id="confirm" class="primary" disabled>' + esc(t("confirm")) + '</button>' +
       "</div>" +
       '<div class="divider"></div>' +
-      '<button id="swap" class="full">Swap variable</button>';
+      '<button id="swap" class="full">' + esc(t("swapVar")) + '</button>';
 
     main.innerHTML = html;
 
@@ -394,17 +566,17 @@
         .sort((a, b) => recentOrder[a.id] - recentOrder[b.id]);
       if (vars.length === 0) {
         listBody.innerHTML =
-          '<div class="muted" style="padding:4px 2px">No recent variables. Start typing to search.</div>';
+          '<div class="muted" style="padding:4px 2px">' + esc(t("noRecent")) + '</div>';
         return;
       }
-      sectionLabel = "Recent";
+      sectionLabel = t("recent");
     } else {
       vars = (isAllMode ? S.allVars : S.groupVars).filter(v => matchesSearch(v, S.search));
       if (vars.length === 0) {
         const noVarsAtAll = !isAllMode && S.groupVars.length === 0;
         listBody.innerHTML =
           '<div class="muted" style="padding:4px 2px">' +
-          (noVarsAtAll ? "No variables in this group." : "No variables match your search.") +
+          esc(noVarsAtAll ? t("noInGroup") : t("noMatch")) +
           "</div>";
         return;
       }
@@ -419,12 +591,13 @@
       const v = vars[i];
       const isCurrent = !isMulti && v.id === currentId;
       const preview = v.valuesByMode[defId];
+      const idLabel = v.varId || v.leaf;
       html +=
         '<div class="list-item' + (isCurrent ? " current" : "") + '" data-id="' + v.id + '">' +
-        '<div class="li-leaf">' + esc(v.leaf) +
-        (isCurrent ? ' <span class="li-current-tag">current</span>' : "") + "</div>" +
-        '<div class="li-val">' + esc(typeof preview === "string" ? preview : "—") + "</div>" +
-        (isAllMode ? '<div class="li-grp">' + esc(v.group || "(page root)") + "</div>" : "") +
+        '<div class="li-leaf">' + esc(typeof preview === "string" && preview !== "" ? preview : "—") +
+        (isCurrent ? ' <span class="li-current-tag">' + esc(t("current")) + '</span>' : "") + "</div>" +
+        '<div class="li-val">' + esc(idLabel) +
+        (isAllMode ? " · " + esc(v.group || t("pageRoot")) : "") + "</div>" +
         "</div>";
     }
     html += "</div>";
@@ -442,17 +615,15 @@
     let html =
       '<div class="list-sticky">' +
       '<div class="list-nav">' +
-      '<button id="back" class="ghost sm">← Back</button>' +
-      '<span class="grp-label">' + esc(S.searchAll ? "All groups" : ("Group: " + (S.groupPath || "(page root)"))) + "</span>" +
+      '<button id="back" class="ghost sm">' + esc(t("back")) + '</button>' +
+      '<span class="grp-label">' + esc(S.searchAll ? t("allGroups") : (t("groupPrefix") + (S.groupPath || t("pageRoot")))) + "</span>" +
       "</div>" +
       '<div class="list-actions">' +
-      '<input id="search" type="text" placeholder="Search name or value" value="' + esc(S.search) + '" />' +
-      '<button id="create" class="primary sm" style="white-space:nowrap">+ New variable</button>' +
+      '<input id="search" type="text" placeholder="' + esc(t("searchPlaceholder")) + '" value="' + esc(S.search) + '" />' +
+      '<button id="create" class="primary sm" style="white-space:nowrap">' + esc(t("newVariable")) + '</button>' +
       "</div>" +
       '<button id="toggleScope" class="ghost sm" style="width:100%;text-align:left;padding:3px 2px">' +
-      (S.searchAll
-        ? "← Search this group only"
-        : "Search outside this group") +
+      esc(S.searchAll ? t("searchThisOnly") : t("searchOutside")) +
       "</button>" +
       "</div>" +
       '<div id="list-body" class="list-body"></div>';
@@ -497,11 +668,11 @@
       '<div class="list-sticky">' +
       '<div class="list-nav" style="margin-bottom:8px">' +
       '<span style="font-weight:600;font-size:12px">' +
-      count + " text layer" + (count === 1 ? "" : "s") + " selected" +
+      esc(t("layersSelected")(count)) +
       "</span>" +
       "</div>" +
       '<div class="list-actions">' +
-      '<input id="search" type="text" placeholder="Search name or value" value="' + esc(S.search) + '" />' +
+      '<input id="search" type="text" placeholder="' + esc(t("searchPlaceholder")) + '" value="' + esc(S.search) + '" />' +
       "</div>" +
       "</div>" +
       '<div id="list-body" class="list-body"></div>';
@@ -524,48 +695,35 @@
   // ---- create view --------------------------------------------------------
   function renderCreate() {
     let html =
-      '<button id="back" class="ghost sm back">← Back</button>' +
-      '<div class="field"><span class="mode-tag">New variable in: ' +
-      esc(S.groupPath || "(page root)") + "</span></div>";
+      '<button id="back" class="ghost sm back">' + esc(t("back")) + '</button>' +
+      '<div class="field"><span class="mode-tag">' + esc(t("newVarIn")) +
+      esc(S.groupPath || t("pageRoot")) + "</span></div>";
 
     for (let i = 0; i < S.modes.length; i++) {
       const m = S.modes[i];
       html +=
         '<div class="field">' +
         '<label>' + esc(m.name) +
-        (m.isDefault ? ' · default <span class="req">*</span>' : "") + "</label>" +
+        (m.isDefault ? esc(t("defaultSuffix")) + ' <span class="req">*</span>' : "") + "</label>" +
         '<textarea data-mode="' + m.modeId + '" data-default="' + (m.isDefault ? "1" : "") +
-        '" placeholder="' + (m.isDefault ? "Required" : 'Blank → "-"') + '"></textarea>' +
+        '" placeholder="' + esc(m.isDefault ? t("required") : t("blankDash")) + '"></textarea>' +
         "</div>";
     }
 
     html +=
-      '<div class="field"><label>Generated name (from default value)</label>' +
-      '<div class="preview" id="namePreview">—</div></div>' +
-      '<button id="createBtn" class="primary full">Create &amp; assign</button>';
+      '<div class="muted" style="margin-bottom:10px">' + esc(t("idAssignedNote")) + '</div>' +
+      '<button id="createBtn" class="primary full">' + esc(t("createAssign")) + '</button>';
 
     main.innerHTML = html;
 
-    const defArea = main.querySelector('textarea[data-default="1"]');
-    const prefix = S.groupPath ? S.groupPath + "/" : "";
-    const updatePreview = () => {
-      const el = $("namePreview");
-      if (!el) return;
-      const leaf = cleanLeaf(defArea ? defArea.value : "");
-      el.textContent = leaf ? prefix + leaf : "—";
-    };
-    if (defArea) defArea.oninput = updatePreview;
-    $("maxlen").oninput = updatePreview;
-    updatePreview();
-
-    $("back").onclick = () => { $("maxlen").oninput = null; S.view = "list"; render(); };
+    $("back").onclick = () => { S.view = "list"; render(); };
     $("createBtn").onclick = () => {
       const values = {};
       const areas = main.querySelectorAll("textarea[data-mode]");
       for (let i = 0; i < areas.length; i++) {
         values[areas[i].getAttribute("data-mode")] = areas[i].value;
       }
-      post({ type: "create", values, maxLen: maxLen() });
+      post({ type: "create", values });
     };
   }
 
@@ -574,28 +732,38 @@
   // their key layer. Lists where each one expects its key so it can be re-made.
   // Each missing-key item has a Delete button that removes the variable in place.
   function renderReport(r) {
-    S.reportFlagged = (r.flagged     || []).slice();
-    S.reportBroken  = (r.brokenNodes || []).slice();
-    S.reportStats   = { renamed: r.renamed, regrouped: r.regrouped || 0 };
+    S.reportFlagged = (r.flagged       || []).slice();
+    S.reportBroken  = (r.brokenNodes   || []).slice();
+    S.reportMissing = (r.missingValues || []).slice();
+    S.reportTotals  = {
+      flagged: r.flaggedTotal != null ? r.flaggedTotal : (r.flagged || []).length,
+      broken:  r.brokenTotal  != null ? r.brokenTotal  : (r.brokenNodes || []).length,
+      missing: r.missingTotal != null ? r.missingTotal : (r.missingValues || []).length,
+    };
+    S.reportStats   = { renamed: r.renamed, regrouped: r.regrouped || 0, migrated: r.migrated || 0 };
     renderReportView();
   }
 
+  function cappedNote(shown, total) {
+    return total > shown
+      ? '<div class="muted" style="padding:4px 2px">' + esc(t("showingSome")(shown, total)) + "</div>"
+      : "";
+  }
+
   function renderReportView() {
-    const r       = S.reportStats  || { renamed: 0, regrouped: 0 };
+    const r       = S.reportStats   || { renamed: 0, regrouped: 0, migrated: 0 };
     const flagged = S.reportFlagged || [];
     const broken  = S.reportBroken  || [];
+    const missing = S.reportMissing || [];
+    const totals  = S.reportTotals  || { flagged: flagged.length, broken: broken.length, missing: missing.length };
 
-    let html = '<div style="font-weight:600;font-size:12px;margin-bottom:6px">Cleanup complete</div>';
-    html += '<div class="muted" style="margin-bottom:10px">' +
-      r.renamed + " renamed" +
-      (r.regrouped ? " · " + r.regrouped + " regrouped" : "") + ".</div>";
+    let html = '<div style="font-weight:600;font-size:12px;margin-bottom:6px">' + esc(t("cleanupComplete")) + '</div>';
+    html += '<div class="muted" style="margin-bottom:10px">' + esc(t("cleanupStat")(r)) + "</div>";
 
     if (flagged.length) {
       html +=
         '<div class="error-banner" style="display:block">' +
-        "⚠️ " + flagged.length + " variable" + (flagged.length === 1 ? "" : "s") +
-        " missing a key layer. Create a text layer at the location shown and link the " +
-        "variable, then run Clean up variables again to clear the flag." +
+        esc(t("flaggedBanner")(flagged.length)) +
         "</div>";
       html += '<div class="list" style="margin-top:8px">';
       for (let i = 0; i < flagged.length; i++) {
@@ -604,16 +772,17 @@
           '<div class="list-item" style="cursor:default;display:flex;align-items:center;gap:8px">' +
           '<div style="flex:1;min-width:0">' +
           '<div class="li-leaf">⚠️ ' + esc(f.leaf) + "</div>" +
-          '<div class="li-grp">' + esc(f.group || "(no group)") + "</div>" +
+          '<div class="li-grp">' + esc(f.group || t("noGroup")) + "</div>" +
           "</div>" +
-          '<button class="sm" style="color:var(--red);border-color:var(--red);flex-shrink:0" data-del="' + i + '">Delete</button>' +
+          '<button class="sm" style="color:var(--red);border-color:var(--red);flex-shrink:0" data-del="' + i + '">' + esc(t("del")) + '</button>' +
           "</div>";
       }
       html += "</div>";
+      html += cappedNote(flagged.length, totals.flagged);
     }
 
     if (broken.length) {
-      html += '<div style="font-weight:600;font-size:11px;margin-top:' + (flagged.length ? "14px" : "0") + ';margin-bottom:6px">Text layers with broken link</div>';
+      html += '<div style="font-weight:600;font-size:11px;margin-top:' + (flagged.length ? "14px" : "0") + ';margin-bottom:6px">' + esc(t("brokenHeading")) + '</div>';
       html += '<div class="list">';
       for (let i = 0; i < broken.length; i++) {
         const b = broken[i];
@@ -621,15 +790,32 @@
           '<div class="list-item" style="cursor:pointer;display:flex;align-items:center;gap:8px" data-nav="' + esc(b.nodeId) + '">' +
           '<div style="flex:1;min-width:0">' +
           '<div class="li-leaf">' + esc(b.nodeName) + "</div>" +
-          '<div class="li-grp">' + esc(b.groupPath || "(no group)") + "</div>" +
+          '<div class="li-grp">' + esc(b.groupPath || t("noGroup")) + "</div>" +
           "</div>" +
-          '<button class="sm" style="flex-shrink:0" data-unlink="' + i + '">Unlink</button>' +
+          '<button class="sm" style="flex-shrink:0" data-unlink="' + i + '">' + esc(t("unlink")) + '</button>' +
           "</div>";
       }
       html += "</div>";
+      html += cappedNote(broken.length, totals.broken);
     }
 
-    html += '<div class="divider"></div><button id="reportDone" class="primary full">Done</button>';
+    if (missing.length) {
+      html += '<div style="font-weight:600;font-size:11px;margin-top:' + ((flagged.length || broken.length) ? "14px" : "0") + ';margin-bottom:6px">' + esc(t("missingHeading")) + '</div>';
+      html += '<div class="muted" style="margin-bottom:6px">' + esc(t("missingNote")) + '</div>';
+      html += '<div class="list">';
+      for (let i = 0; i < missing.length; i++) {
+        const m = missing[i];
+        html +=
+          '<div class="list-item" style="cursor:default">' +
+          '<div class="li-leaf">' + esc(m.id) + "</div>" +
+          '<div class="li-grp">' + esc(m.group || t("noGroup")) + " · " + esc(t("missingPrefix")) + esc(m.modes.join(", ")) + "</div>" +
+          "</div>";
+      }
+      html += "</div>";
+      html += cappedNote(missing.length, totals.missing);
+    }
+
+    html += '<div class="divider"></div><button id="reportDone" class="primary full">' + esc(t("done")) + '</button>';
     main.innerHTML = html;
 
     main.querySelectorAll("[data-del]").forEach((btn) => {
@@ -639,6 +825,7 @@
         if (!f) return;
         post({ type: "delete-var", variableId: f.id });
         S.reportFlagged.splice(idx, 1);
+        if (S.reportTotals) S.reportTotals.flagged = Math.max(0, S.reportTotals.flagged - 1);
         renderReportView();
       };
     });
@@ -655,6 +842,7 @@
         if (!b) return;
         post({ type: "unlink-node", nodeId: b.nodeId });
         S.reportBroken.splice(idx, 1);
+        if (S.reportTotals) S.reportTotals.broken = Math.max(0, S.reportTotals.broken - 1);
         renderReportView();
       };
     });
@@ -723,13 +911,117 @@
 
   $("exportcsv").onclick = () => post({ type: "export-csv" });
 
+  // ---- CSV import ---------------------------------------------------------
+  // Parser handles quoted fields, escaped quotes (""), embedded commas/newlines,
+  // and a leading UTF-8 BOM. Returns an array of row arrays.
+  function parseCSV(text) {
+    if (text.charCodeAt(0) === 0xFEFF) text = text.slice(1);
+    const rows = [];
+    let row = [], field = "", inQuotes = false, i = 0;
+    while (i < text.length) {
+      const c = text[i];
+      if (inQuotes) {
+        if (c === '"') {
+          if (text[i + 1] === '"') { field += '"'; i += 2; continue; }
+          inQuotes = false; i++; continue;
+        }
+        field += c; i++; continue;
+      }
+      if (c === '"') { inQuotes = true; i++; continue; }
+      if (c === ",") { row.push(field); field = ""; i++; continue; }
+      if (c === "\r") { i++; continue; }
+      if (c === "\n") { row.push(field); rows.push(row); row = []; field = ""; i++; continue; }
+      field += c; i++;
+    }
+    if (field !== "" || row.length) { row.push(field); rows.push(row); }
+    // Drop fully-empty rows.
+    return rows.filter(r => r.some(cell => String(cell).trim() !== ""));
+  }
+
+  $("importcsv").onclick = () => {
+    if (!confirm(t("importConfirm"))) {
+      return;
+    }
+    $("fileinput").click();
+  };
+
+  $("fileinput").onchange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const rows = parseCSV(String(reader.result || ""));
+      $("fileinput").value = ""; // allow re-picking the same file
+      if (rows.length < 2) {
+        post({ type: "notify", message: t("csvNoData") });
+        return;
+      }
+      post({ type: "import-csv", headers: rows[0], rows: rows.slice(1) });
+    };
+    reader.readAsText(file);
+  };
+
+  // ---- import report ------------------------------------------------------
+  function renderImportReport(r) {
+    let html = '<div style="font-weight:600;font-size:12px;margin-bottom:6px">' + esc(t("importComplete")) + '</div>';
+    html += '<div class="muted" style="margin-bottom:10px">' +
+      esc(t("importStat")({ updated: r.updated, newModes: r.newModes ? r.newModes.length : 0 })) + "</div>";
+
+    if (r.newModes && r.newModes.length) {
+      html += '<div class="muted" style="margin-bottom:10px">' + esc(t("newModesLabel")) + r.newModes.map(esc).join(", ") + "</div>";
+    }
+
+    if (r.unmatched && r.unmatched.length) {
+      html +=
+        '<div class="error-banner" style="display:block">' +
+        esc(t("unmatchedBanner")(r.unmatched.length)) +
+        "</div>";
+      html += '<div class="list" style="margin-top:8px">';
+      for (let i = 0; i < r.unmatched.length; i++) {
+        const u = r.unmatched[i];
+        const loc = [u.section1, u.section2, u.section3, u.layer].filter(Boolean).join(" / ");
+        html +=
+          '<div class="list-item" style="cursor:default">' +
+          '<div class="li-leaf">' + esc(u.variableName || t("blank")) + "</div>" +
+          '<div class="li-grp">' + esc(loc || t("noLocation")) + "</div>" +
+          "</div>";
+      }
+      html += "</div>";
+    }
+
+    html += '<div class="divider"></div><button id="reportDone" class="primary full">' + esc(t("done")) + '</button>';
+    main.innerHTML = html;
+    $("reportDone").onclick = () => post({ type: "refresh" });
+  }
+
   // ---- header tools -------------------------------------------------------
   $("cleanup").onclick = () => {
-    if (confirm('Clean up every variable in the "language" collection: rename to match values, re-group moved layers, and flag variables whose key layer is missing. This cannot be undone.')) {
-      post({ type: "cleanup", maxLen: maxLen() });
+    if (confirm(t("cleanupConfirm"))) {
+      post({ type: "cleanup" });
     }
   };
 
+  // ---- language toggle ----------------------------------------------------
+  // Updates the static header labels + toggle state, then re-renders the body.
+  function applyLang() {
+    $("exportcsv").textContent = t("exportCsv");
+    $("importcsv").textContent = t("importCsv");
+    $("cleanup").textContent = t("cleanup");
+    $("lang-en").classList.toggle("active", S.lang === "en");
+    $("lang-ko").classList.toggle("active", S.lang === "ko");
+    render();
+  }
+
+  function setLang(lang) {
+    if (S.lang === lang) return;
+    S.lang = lang;
+    post({ type: "set-lang", lang: lang });
+    applyLang();
+  }
+  $("lang-en").onclick = () => setLang("en");
+  $("lang-ko").onclick = () => setLang("ko");
+
+  applyLang(); // initial labels before the first state arrives
   post({ type: "ready" });
 </script>
 </body>
